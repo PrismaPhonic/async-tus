@@ -7,7 +7,6 @@ use crate::Error;
 pub const TUS_VERSION: &'static str = "1.0.0";
 
 /// Default is 4 meg chunks
-const CHUNK_SIZE: usize = 1024 * 1024 * 4;
 
 const TUS_RESUMABLE: &'static str = "tus-resumable";
 const UPLOAD_OFFSET: &'static str = "upload-offset";
