@@ -1,4 +1,6 @@
 use reqwest::header::InvalidHeaderValue;
+use tokio::sync::mpsc::error::SendError;
+use crate::Chunk;
 
 #[derive(Debug)]
 pub enum Error {
@@ -7,7 +9,9 @@ pub enum Error {
     InvalidHeaderValue(InvalidHeaderValue),
 
     // Remove this. For now - to make things work.
-    StringError(String)
+    StringError(String),
+
+    ChannelError(SendError<(Chunk, u32)>),
 }
 
 impl std::fmt::Display for Error {

@@ -1,13 +1,14 @@
 use std::core::task::Context;
 
 use tokio::io::AsyncRead;
-use crossbeam::channel::Sender;
 
 use crate::Error;
+use std::task::Context;
+use tokio::sync::mpsc::Sender;
 
 const CHUNK_SIZE: usize = 1024 * 1024 * 4;
 
-type Chunk = [u8; CHUNK_SIZE];
+pub(crate) type Chunk = Vec<u8>;
 
 pub struct Processor<T> 
     where T: AsyncRead
@@ -26,13 +27,23 @@ impl<T> Processor<T>
         }
     }
 
-    pub async fn process(&mut self, ctx: Context) -> Result<usize, Error> {
-        let mut chunk: [u8; CHUNK_SIZE] = [0; CHUNK_SIZE];
-        let bytes_read = self.reader.poll_read(ctx)
-            .await
-            .map_err(|e| Error:IoError(e))?;
+    pub async fn process(&mut self, ctx: &mut Context) -> Result<(), Error> {
+        loop {
+            let mut chunk = vec![0; CHUNK_SIZE];
+            let bytes_read = self.reader.poll_read(ctx, &mut chunk)
+                .await
+                .map_err(|e| Error::IoError(e))?;
+            if bytes_read == 0 {
+                break
+            }
+            chunk.truncate(bytes_read);
 
-        self.sender
-        Ok(0)
+            // TODO: Potentially limit channel size so we force pause here to keep
+            // channel from getting too filled up.
+            self.sender.send((chunk, bytes_read))
+                .await
+                .map_err(|e| Error::ChannelError(e))?;
+        }
+        Ok(())
     }
 }
