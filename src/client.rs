@@ -13,9 +13,9 @@ pub const TUS_VERSION: &'static str = "1.0.0";
 /// Default is 4 meg chunks
 const CHUNK_SIZE: usize = 1024 * 1024 * 4;
 
-const TUS_RESUMABLE: &'static str = "tus-resumable";
-const UPLOAD_OFFSET: &'static str = "upload-offset";
-const UPLOAD_LENGTH: &'static str = "upload-length";
+const TUS_RESUMABLE: &'static str = "Tus-Resumable";
+const UPLOAD_OFFSET: &'static str = "Upload-Offset";
+const UPLOAD_LENGTH: &'static str = "Upload-Length";
 const OFFSET_OCTET_STREAM: &'static str = "application/offset+octet-stream";
 
 /// Returns the minimum set of headers required to make a TUS request. This should be used as the
@@ -49,7 +49,7 @@ impl<'a> Client {
     }
 
     /// Uploads all content from `reader` to the endpoint, consuming this Client.
-    pub async fn upload<T>(self, reader: T) -> Result<usize, Error>
+    pub async fn upload<T>(self, reader: T) -> Result<(), Error>
         where T: AsyncReadExt + Unpin + Send + 'static {
         let (mut tx, mut rx) = channel(4);
         let mut processor = Processor::new(reader, tx);
@@ -60,16 +60,17 @@ impl<'a> Client {
 
         let mut offset = 0;
         while let Some((chunk, bytes_read)) = rx.recv().await {
-            offset += bytes_read;
             let mut headers = self.headers.clone();
             headers.insert(UPLOAD_OFFSET.clone(), HeaderValue::from_str(&format!("{}", offset))?);
-            self.upload_chunk(chunk, headers).await;
+            headers.remove(UPLOAD_LENGTH);
+            println!("headers: {:?}, chunk_len: {}", headers, chunk.len());
+            self.upload_chunk(chunk, headers).await?;
+            offset += bytes_read;
         }
-        Ok(offset)
+        Ok(())
     }
 
-    async fn upload_chunk(&self, chunk: Vec<u8>, headers: HeaderMap) -> Result<usize, Error> {
-        let len = chunk.len();
+    async fn upload_chunk(&self, chunk: Vec<u8>, headers: HeaderMap) -> Result<(), Error> {
         let res = self.client
             .patch(self.url.as_str())
             .body(chunk)
@@ -81,7 +82,7 @@ impl<'a> Client {
         if res.status() != reqwest::StatusCode::NO_CONTENT {
             return Err(Error::StringError(format!("Did not save chunk: {} -> {}", res.status(), &res.text().await?)))
         }
-        Ok(len)
+        Ok(())
     }
 }
 
