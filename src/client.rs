@@ -63,7 +63,6 @@ impl<'a> Client {
             offset += bytes_read;
             let mut headers = self.headers.clone();
             headers.insert(UPLOAD_OFFSET.clone(), HeaderValue::from_str(&format!("{}", offset))?);
-            // headers.remove("upload-length");
             self.upload_chunk(chunk, headers).await;
         }
         Ok(offset)
