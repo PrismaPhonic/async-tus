@@ -69,25 +69,6 @@ impl<'a> Client {
         Ok(offset)
     }
 
-    fn upload_inner<T, U>(&self, mut reader: T, mut cb: U) -> Result<usize, Error>
-        where T: Read,
-              U: FnMut(Vec<u8>, usize) -> Result<usize, Error>,
-    {
-        let mut offset = 0;
-        loop {
-            let mut chunk = vec![0; CHUNK_SIZE];
-            let bytes_read = reader.read(&mut chunk)
-                .map_err(|e| Error::IoError(e))?;
-            chunk.truncate(bytes_read);
-            if bytes_read == 0 {
-                return Ok(offset)
-            }
-            chunk.truncate(bytes_read);
-            cb(chunk, offset)?;
-            offset += bytes_read;
-        }
-    }
-
     async fn upload_chunk(&self, chunk: Vec<u8>, headers: HeaderMap) -> Result<usize, Error> {
         let len = chunk.len();
         let res = self.client
@@ -136,20 +117,6 @@ mod tests {
         tmp.seek(std::io::SeekFrom::Start(0)).expect("Couldn't seek");
 
         (tmp, bytes)
-    }
-
-    #[test]
-    fn test_chunking_works() {
-        let (file, bytes) = entropy_filled_file();
-        let client = test_client();
-
-        let mut vec: Vec<u8> = vec![];
-        client.upload_inner(file, |chunk, _| {
-            vec.extend(&chunk);
-            Ok(chunk.len())
-        }).expect("Didn't upload_inner");
-
-        assert_eq!(&vec[..], &bytes[..]);
     }
 
     #[test]

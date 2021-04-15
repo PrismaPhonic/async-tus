@@ -10,6 +10,3 @@ pub use client::*;
 
 pub mod processor;
 pub use processor::*;
-
-pub mod sender;
-pub use sender::*;
