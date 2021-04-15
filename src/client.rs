@@ -63,7 +63,6 @@ impl<'a> Client {
             let mut headers = self.headers.clone();
             headers.insert(UPLOAD_OFFSET.clone(), HeaderValue::from_str(&format!("{}", offset))?);
             headers.remove(UPLOAD_LENGTH);
-            println!("headers: {:?}, chunk_len: {}", headers, chunk.len());
             self.upload_chunk(chunk, headers).await?;
             offset += bytes_read;
         }
@@ -131,11 +130,9 @@ mod tests {
     async fn test_uploads_a_file() {
         let mut file = tokio::fs::File::open("/tmp/test.mp4").await.expect("Couldn't open file");
         let size = file.metadata().await.expect("Couldn't get metadata").len();
-        println!("size: {}", size);
 
         // Get an upload link
         let headers = default_headers(size);
-        println!("headers: {:?}", &headers);
         let resp = reqwest::Client::new()
             .post("https://master.tus.io/files/")
             .headers(headers)
