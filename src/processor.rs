@@ -1,7 +1,6 @@
-use tokio::io::{AsyncRead, AsyncReadExt};
+use tokio::io::AsyncReadExt;
 
 use crate::Error;
-use std::task::Context;
 use tokio::sync::mpsc::Sender;
 
 const CHUNK_SIZE: usize = 1024 * 1024 * 4;

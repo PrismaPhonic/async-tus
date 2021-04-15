@@ -1,17 +1,11 @@
-use std::io::Read;
 pub use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use url::Url;
 use crate::{Error, Processor};
-use tokio::prelude::AsyncRead;
-use tokio::sync::mpsc::{Sender, channel};
-use std::task::{Waker, RawWaker};
+use tokio::sync::mpsc::channel;
 use tokio::io::AsyncReadExt;
 
 /// Version of the TUS protocol we're configured to use.
 pub const TUS_VERSION: &'static str = "1.0.0";
-
-/// Default is 4 meg chunks
-const CHUNK_SIZE: usize = 1024 * 1024 * 4;
 
 const TUS_RESUMABLE: &'static str = "Tus-Resumable";
 const UPLOAD_OFFSET: &'static str = "Upload-Offset";
@@ -51,7 +45,7 @@ impl<'a> Client {
     /// Uploads all content from `reader` to the endpoint, consuming this Client.
     pub async fn upload<T>(self, reader: T) -> Result<(), Error>
         where T: AsyncReadExt + Unpin + Send + 'static {
-        let (mut tx, mut rx) = channel(4);
+        let (tx, mut rx) = channel(4);
         let mut processor = Processor::new(reader, tx);
         tokio::spawn(async move {
             processor.process().await?;
