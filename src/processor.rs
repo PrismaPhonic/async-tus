@@ -1,6 +1,6 @@
 use std::core::task::Context;
 
-use tokio::io::AsyncRead;
+use tokio::io::{AsyncRead, AsyncReadExt};
 
 use crate::Error;
 use std::task::Context;
@@ -11,26 +11,26 @@ const CHUNK_SIZE: usize = 1024 * 1024 * 4;
 pub(crate) type Chunk = Vec<u8>;
 
 pub struct Processor<T> 
-    where T: AsyncRead
+    where T: AsyncReadExt + Unpin
 {
     reader: T,
-    sender: Sender<(Chunk, u32)>,
+    sender: Sender<(Chunk, usize)>,
 }
 
 impl<T> Processor<T>
-    where T: AsyncRead
+    where T: AsyncReadExt + Unpin
 {
-    pub fn new(reader: T, sender: Sender<(Chunk, u32)>) -> Processor<T> {
+    pub fn new(reader: T, sender: Sender<(Chunk, usize)>) -> Processor<T> {
         Processor {
             reader,
             sender,
         }
     }
 
-    pub async fn process(&mut self, ctx: &mut Context) -> Result<(), Error> {
+    pub async fn process(&mut self) -> Result<(), Error> {
         loop {
             let mut chunk = vec![0; CHUNK_SIZE];
-            let bytes_read = self.reader.poll_read(ctx, &mut chunk)
+            let bytes_read = self.reader.read(&mut chunk)
                 .await
                 .map_err(|e| Error::IoError(e))?;
             if bytes_read == 0 {

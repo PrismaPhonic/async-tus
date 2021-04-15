@@ -11,7 +11,7 @@ pub enum Error {
     // Remove this. For now - to make things work.
     StringError(String),
 
-    ChannelError(SendError<(Chunk, u32)>),
+    ChannelError(SendError<(Chunk, usize)>),
 }
 
 impl std::fmt::Display for Error {

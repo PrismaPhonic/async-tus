@@ -1,12 +1,17 @@
 use std::io::Read;
 pub use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use url::Url;
-use crate::Error;
+use crate::{Error, Processor};
+use tokio::prelude::AsyncRead;
+use tokio::sync::mpsc::{Sender, channel};
+use std::task::{Waker, RawWaker};
+use tokio::io::AsyncReadExt;
 
 /// Version of the TUS protocol we're configured to use.
 pub const TUS_VERSION: &'static str = "1.0.0";
 
 /// Default is 4 meg chunks
+const CHUNK_SIZE: usize = 1024 * 1024 * 4;
 
 const TUS_RESUMABLE: &'static str = "tus-resumable";
 const UPLOAD_OFFSET: &'static str = "upload-offset";
@@ -27,8 +32,7 @@ pub fn default_headers(size: u64) -> HeaderMap {
 pub struct Client {
     url: Url,
     headers: HeaderMap,
-    // TODO(richo) Make this generic over some trait so we can test it
-    client: reqwest::blocking::Client,
+    client: reqwest::Client,
 }
 
 impl Client {
@@ -40,19 +44,36 @@ impl Client {
         Client {
             url,
             headers,
-            client: reqwest::blocking::Client::new(),
+            client: reqwest::Client::new(),
         }
     }
 
     /// Uploads all content from `reader` to the endpoint, consuming this Client.
-    pub fn upload<T>(self, reader: T) -> Result<usize, Error>
-        where T: Read {
-        self.upload_inner(reader, |chunk, offset| {
+    pub async fn upload<T>(self, reader: T) -> Result<usize, Error>
+        where T: AsyncReadExt + Unpin {
+        let (mut tx, mut rx) = channel(4);
+        let mut processor = Processor::new(reader, tx);
+        tokio::spawn(async {
+            processor.process().await?
+        });
+
+        let mut offset = 0;
+        let mut finalChunk = Vec::new();
+        let mut finalHeaders = HeaderMap::new();
+        while let Some((chunk, addToOffset)) = rx.recv().await {
+            offset += addToOffset;
             let mut headers = self.headers.clone();
+            headers = self.headers.clone();
             headers.insert(UPLOAD_OFFSET.clone(), HeaderValue::from_str(&format!("{}", offset))?);
             headers.remove("upload-length");
-            self.upload_chunk(chunk, headers)
-        })
+            if chunk.len() < CHUNK_SIZE {
+                finalChunk = chunk;
+                finalHeaders = headers;
+                break;
+            }
+            self.upload_chunk(chunk, headers);
+        }
+        return self.upload_chunk(finalChunk, finalHeaders);
     }
 
     fn upload_inner<T, U>(&self, mut reader: T, mut cb: U) -> Result<usize, Error>
