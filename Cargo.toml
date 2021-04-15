@@ -10,7 +10,7 @@ license = "MIT"
 [dependencies]
 reqwest = { version = "0.10.4" }
 url = "2.1.1"
-tokio = { version = "0.2.20", features = ["full"] }
+tokio = { version = "0.2.20", features = ["full", "io-util"] }
 crossbeam = "0.7.3"
 
 [dev-dependencies]

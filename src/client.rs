@@ -59,22 +59,14 @@ impl<'a> Client {
         });
 
         let mut offset = 0;
-        let mut finalChunk = Vec::new();
-        let mut finalHeaders = HeaderMap::new();
-        while let Some((chunk, addToOffset)) = rx.recv().await {
-            offset += addToOffset;
+        while let Some((chunk, bytes_read)) = rx.recv().await {
+            offset += bytes_read;
             let mut headers = self.headers.clone();
-            headers = self.headers.clone();
             headers.insert(UPLOAD_OFFSET.clone(), HeaderValue::from_str(&format!("{}", offset))?);
-            headers.remove("upload-length");
-            if chunk.len() < CHUNK_SIZE {
-                finalChunk = chunk;
-                finalHeaders = headers;
-                break;
-            }
+            // headers.remove("upload-length");
             self.upload_chunk(chunk, headers).await;
         }
-        self.upload_chunk(finalChunk, finalHeaders).await
+        Ok(offset)
     }
 
     fn upload_inner<T, U>(&self, mut reader: T, mut cb: U) -> Result<usize, Error>
@@ -132,7 +124,7 @@ mod tests {
     ///
     /// The buffer is intentionally not a very even size, to ensure that tests that verify chunking
     /// at 1k boundaries do the right thing.
-    fn entropy_filled_file<'a>() -> (File, Vec<u8>) {
+    fn entropy_filled_file() -> (File, Vec<u8>) {
         use tests::rand::prelude::*;
         let mut tmp = tempfile::tempfile().expect("Couldn't create tempfile");
         let mut rng = thread_rng();
@@ -170,11 +162,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_uploads_a_file() {
-        let file = tokio::fs::File::open("/tmp/test.mp4").await.expect("Couldn't open file");
+        let mut file = tokio::fs::File::open("/tmp/test.mp4").await.expect("Couldn't open file");
         let size = file.metadata().await.expect("Couldn't get metadata").len();
+        println!("size: {}", size);
 
         // Get an upload link
         let headers = default_headers(size);
+        println!("headers: {:?}", &headers);
         let resp = reqwest::Client::new()
             .post("https://master.tus.io/files/")
             .headers(headers)
