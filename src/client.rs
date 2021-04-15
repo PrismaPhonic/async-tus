@@ -35,7 +35,7 @@ pub struct Client {
     client: reqwest::Client,
 }
 
-impl Client {
+impl<'a> Client {
     /// Creates a new Client.
     ///
     /// Headers should be a HeaderMap preloaded with all necessary information to communicate with
@@ -50,11 +50,12 @@ impl Client {
 
     /// Uploads all content from `reader` to the endpoint, consuming this Client.
     pub async fn upload<T>(self, reader: T) -> Result<usize, Error>
-        where T: AsyncReadExt + Unpin {
+        where T: AsyncReadExt + Unpin + Send + 'static {
         let (mut tx, mut rx) = channel(4);
         let mut processor = Processor::new(reader, tx);
-        tokio::spawn(async {
-            processor.process().await?
+        tokio::spawn(async move {
+            processor.process().await?;
+            Ok::<(), Error>(())
         });
 
         let mut offset = 0;
@@ -71,9 +72,9 @@ impl Client {
                 finalHeaders = headers;
                 break;
             }
-            self.upload_chunk(chunk, headers);
+            self.upload_chunk(chunk, headers).await;
         }
-        return self.upload_chunk(finalChunk, finalHeaders);
+        self.upload_chunk(finalChunk, finalHeaders).await
     }
 
     fn upload_inner<T, U>(&self, mut reader: T, mut cb: U) -> Result<usize, Error>
@@ -95,17 +96,18 @@ impl Client {
         }
     }
 
-    fn upload_chunk(&self, chunk: Vec<u8>, headers: HeaderMap) -> Result<usize, Error> {
+    async fn upload_chunk(&self, chunk: Vec<u8>, headers: HeaderMap) -> Result<usize, Error> {
         let len = chunk.len();
         let res = self.client
             .patch(self.url.as_str())
             .body(chunk)
             .headers(headers)
             .send()
+            .await
             .map_err(|e| Error::ReqwestError(e))?;
 
         if res.status() != reqwest::StatusCode::NO_CONTENT {
-            return Err(Error::StringError(format!("Did not save chunk: {} -> {}", res.status(), &res.text()?)))
+            return Err(Error::StringError(format!("Did not save chunk: {} -> {}", res.status(), &res.text().await?)))
         }
         Ok(len)
     }
@@ -123,11 +125,7 @@ mod tests {
 
     /// Create a dummy client for use in tests
     fn test_client() -> Client {
-        Client {
-            url: "https://test-url.com/foo".parse().expect("Couldn't parse URL"),
-            headers: HeaderMap::new(),
-            client: reqwest::blocking::Client::new(),
-        }
+        Client::new("https://test-url.com/foo".parse().unwrap(), HeaderMap::new())
     }
 
     /// Creates a file filled with entropy, and returns it along with the entropy used.
@@ -170,18 +168,18 @@ mod tests {
         assert_eq!(&bytes[..], &vec[..]);
     }
 
-    #[test]
-    #[ignore]
-    fn test_uploads_a_file() {
-        let file = File::open("/tmp/test.mp4").expect("Couldn't open file");
-        let size = file.metadata().expect("Couldn't get metadata").len();
+    #[tokio::test]
+    async fn test_uploads_a_file() {
+        let file = tokio::fs::File::open("/tmp/test.mp4").await.expect("Couldn't open file");
+        let size = file.metadata().await.expect("Couldn't get metadata").len();
 
         // Get an upload link
         let headers = default_headers(size);
-        let resp = reqwest::blocking::Client::new()
+        let resp = reqwest::Client::new()
             .post("https://master.tus.io/files/")
             .headers(headers)
             .send()
+            .await
             .expect("couldn't get upload location");
 
         let loc = resp
@@ -195,6 +193,6 @@ mod tests {
 
         let headers = default_headers(size);
         let client = Client::new(loc, headers);
-        client.upload(file).unwrap();
+        client.upload(file).await.unwrap();
     }
 }

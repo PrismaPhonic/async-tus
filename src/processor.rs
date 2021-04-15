@@ -1,5 +1,3 @@
-use std::core::task::Context;
-
 use tokio::io::{AsyncRead, AsyncReadExt};
 
 use crate::Error;
@@ -11,14 +9,14 @@ const CHUNK_SIZE: usize = 1024 * 1024 * 4;
 pub(crate) type Chunk = Vec<u8>;
 
 pub struct Processor<T> 
-    where T: AsyncReadExt + Unpin
+    where T: AsyncReadExt + Unpin + Send
 {
     reader: T,
     sender: Sender<(Chunk, usize)>,
 }
 
 impl<T> Processor<T>
-    where T: AsyncReadExt + Unpin
+    where T: AsyncReadExt + Unpin + Send
 {
     pub fn new(reader: T, sender: Sender<(Chunk, usize)>) -> Processor<T> {
         Processor {
